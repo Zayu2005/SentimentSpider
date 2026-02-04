@@ -5,6 +5,7 @@
 from .config import settings, get_settings
 from .fetcher import HotNewsFactory, OrzAiFetcher, OrzAiClient
 from .analyzer import LLMClientFactory, DomainChecker, KeywordExtractor
+from .logger import logger, setup_logger, info, debug, warning, error
 from .models.entities import (
     HotNewsItem,
     DomainInfo,
@@ -27,6 +28,13 @@ __all__ = [
     # Config
     "settings",
     "get_settings",
+    # Logger
+    "logger",
+    "setup_logger",
+    "info",
+    "debug",
+    "warning",
+    "error",
     # Fetcher
     "HotNewsFactory",
     "OrzAiFetcher",
