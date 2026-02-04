@@ -173,7 +173,7 @@ async def _run_pipeline_inner(
         info("=" * 70)
         info(f"⏰ 开始时间: {start_datetime}")
         info(f"📋 批次ID: {log_id}")
-        info()
+        info("")
 
         # 显示配置信息
         info("📝 执行配置:")
@@ -190,7 +190,7 @@ async def _run_pipeline_inner(
 
         if crawl_platforms:
             info(f"  • 爬虫平台: {', '.join(crawl_platforms)}")
-        info()
+        info("")
 
         # =============== Step 1: 获取热点 ===============
         info("[Step 1/4] 🔍 获取热点新闻")
@@ -335,7 +335,7 @@ async def _run_pipeline_inner(
         info(f"  • 匹配热点: {matched_count:4} 条")
         info(f"  • 提取关键词: {keyword_count:3} 个")
         info(f"  • 触发爬虫: {crawl_count:3} 次")
-        info()
+        info("")
         info(f"⏱️  执行耗时: {elapsed_time:.2f} 秒")
         info(f"🔚 结束时间: {end_datetime}")
         info("=" * 70)
