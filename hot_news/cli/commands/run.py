@@ -19,27 +19,35 @@ from hot_news.database import (
 )
 from hot_news.models.entities import HotNewsItem
 
+# 并发控制：最多同时执行的LLM调用数
+MAX_CONCURRENT_LLM_CALLS = 5
+
 cmd_run = typer.Typer(help="一键执行完整流程")
 
 
 async def _analyze_domain(news_list, selected_domains):
-    """异步分析领域匹配"""
+    """异步分析领域匹配 - 使用并发加速"""
     checker = DomainChecker()
+    analysis_repo = AnalysisRepository()
     matched_count = 0
 
-    for idx, news_row in enumerate(news_list):
-        news = HotNewsItem(
-            news_id=news_row["news_id"],
-            platform_code=news_row["platform_code"],
-            title=news_row["title"],
-            url=news_row.get("url", ""),
-            description=news_row.get("description", ""),
-        )
+    # 创建信号量限制并发数
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
 
-        for domain in selected_domains:
+    async def check_and_save(news_row, domain):
+        """检查单个新闻-领域对，并保存结果"""
+        async with semaphore:  # 限制并发数
+            news = HotNewsItem(
+                news_id=news_row["news_id"],
+                platform_code=news_row["platform_code"],
+                title=news_row["title"],
+                url=news_row.get("url", ""),
+                description=news_row.get("description", ""),
+            )
+
             try:
                 result = await checker.check_domain(news, domain)
-                AnalysisRepository().save_analysis(
+                analysis_repo.save_analysis(
                     news_id=result.news_id,
                     domain_id=result.domain_id,
                     is_match=result.is_match,
@@ -47,16 +55,31 @@ async def _analyze_domain(news_list, selected_domains):
                     analysis_content=result.reason,
                     confidence=result.confidence,
                 )
-                if result.is_match:
-                    matched_count += 1
-            except Exception:
-                pass
+                return 1 if result.is_match else 0
+            except Exception as e:
+                print(f"  [错误] {news_row['title'][:20]}... @ {domain.domain_name}: {str(e)[:40]}")
+                return 0
+
+    # 创建所有的检查任务
+    tasks = []
+    for news_row in news_list:
+        for domain in selected_domains:
+            task = check_and_save(news_row, domain)
+            tasks.append(task)
+
+    # 并发执行所有任务
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # 统计匹配数
+    for result in results:
+        if isinstance(result, int):
+            matched_count += result
 
     return matched_count
 
 
 async def _extract_keywords(selected_domains, keyword_limit, all_news=None, run_batch_id: int = None):
-    """异步提取关键词
+    """异步提取关键词 - 使用并发加速
 
     Args:
         selected_domains: 选定的领域列表，如果为空则使用all_news
@@ -68,39 +91,12 @@ async def _extract_keywords(selected_domains, keyword_limit, all_news=None, run_
     keyword_repo = KeywordRepository()
     total_keywords = 0
 
-    # 如果有domain配置，从匹配的热点中提取
-    if selected_domains:
-        for domain in selected_domains:
-            matched_news = AnalysisRepository().get_matched_news(domain.id, keyword_limit)
-            for news_row in matched_news:
-                news = HotNewsItem(
-                    news_id=news_row["news_id"],
-                    platform_code=news_row["platform_code"],
-                    title=news_row["title"],
-                    url=news_row.get("url", ""),
-                    description=news_row.get("description", ""),
-                )
+    # 创建信号量限制并发数
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
 
-                try:
-                    keywords = await extractor.extract_keywords(news, domain)
-                    if keywords:
-                        keyword_repo.bulk_save(keywords, run_batch_id=run_batch_id)
-                        total_keywords += len(keywords)
-                except Exception:
-                    pass
-
-    # 如果没有domain配置，从所有热点中提取（不筛选）
-    elif all_news:
-        # 创建一个虚拟的domain对象用于关键词提取
-        from hot_news.models.entities import DomainConfig
-        virtual_domain = DomainConfig(
-            id=0,
-            domain_name="通用",
-            domain_keywords="热点,新闻",
-            is_enabled=1,
-        )
-
-        for news_row in all_news[:keyword_limit]:
+    async def extract_and_save(news_row, domain):
+        """提取关键词并保存"""
+        async with semaphore:
             news = HotNewsItem(
                 news_id=news_row["news_id"],
                 platform_code=news_row["platform_code"],
@@ -110,12 +106,44 @@ async def _extract_keywords(selected_domains, keyword_limit, all_news=None, run_
             )
 
             try:
-                keywords = await extractor.extract_keywords(news, virtual_domain)
+                keywords = await extractor.extract_keywords(news, domain)
                 if keywords:
                     keyword_repo.bulk_save(keywords, run_batch_id=run_batch_id)
-                    total_keywords += len(keywords)
-            except Exception:
-                pass
+                    return len(keywords)
+            except Exception as e:
+                print(f"  [错误] 提取关键词失败 {news_row['title'][:20]}...: {str(e)[:40]}")
+            return 0
+
+    tasks = []
+
+    # 如果有domain配置，从匹配的热点中提取
+    if selected_domains:
+        for domain in selected_domains:
+            matched_news = AnalysisRepository().get_matched_news(domain.id, keyword_limit)
+            for news_row in matched_news:
+                task = extract_and_save(news_row, domain)
+                tasks.append(task)
+
+    # 如果没有domain配置，从所有热点中提取（不筛选）
+    elif all_news:
+        from hot_news.models.entities import DomainConfig
+        virtual_domain = DomainConfig(
+            id=0,
+            domain_name="通用",
+            domain_keywords="热点,新闻",
+            is_enabled=1,
+        )
+
+        for news_row in all_news[:keyword_limit]:
+            task = extract_and_save(news_row, virtual_domain)
+            tasks.append(task)
+
+    # 并发执行所有任务
+    if tasks:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, int):
+                total_keywords += result
 
     return total_keywords
 
@@ -215,6 +243,7 @@ async def _run_pipeline_inner(
 
             news_list = repo.get_recent(hot_limit)
             print(f"\n从 {len(news_list)} 条热点中进行分析...")
+            print(f"⚡ 并发执行 (最多 {MAX_CONCURRENT_LLM_CALLS} 并发)")
             matched_count = await _analyze_domain(news_list, selected_domains)
             print(f"\n✅ 步骤完成: 匹配 {matched_count} 条热点")
         elif not selected_domains and not no_llm:
@@ -231,10 +260,12 @@ async def _run_pipeline_inner(
         if not no_llm:
             if selected_domains:
                 print(f"从 {len(selected_domains)} 个领域的匹配热点中提取关键词...")
+                print(f"⚡ 并发执行 (最多 {MAX_CONCURRENT_LLM_CALLS} 并发)")
                 keyword_count = await _extract_keywords(selected_domains, keyword_limit, run_batch_id=log_id)
                 print(f"\n✅ 步骤完成: 提取 {keyword_count} 个关键词")
             else:
                 print("未配置领域，从所有热点中提取关键词...")
+                print(f"⚡ 并发执行 (最多 {MAX_CONCURRENT_LLM_CALLS} 并发)")
                 all_news_list = repo.get_recent(hot_limit)
                 keyword_count = await _extract_keywords([], keyword_limit, all_news=all_news_list, run_batch_id=log_id)
                 print(f"\n✅ 步骤完成: 提取 {keyword_count} 个关键词")
