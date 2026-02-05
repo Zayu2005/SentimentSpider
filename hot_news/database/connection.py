@@ -4,7 +4,7 @@
 
 import pymysql
 from typing import Optional
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from ..config.settings import get_settings
 
 
@@ -49,3 +49,30 @@ class DatabaseConnection:
 def get_db() -> DatabaseConnection:
     """获取数据库连接实例"""
     return DatabaseConnection()
+
+
+@asynccontextmanager
+async def get_async_db_connection():
+    """
+    获取异步数据库连接
+
+    使用 aiomysql 实现异步数据库操作
+    """
+    import aiomysql
+
+    settings = get_settings()
+    db_config = settings._db_config
+
+    conn = await aiomysql.connect(
+        host=db_config.host,
+        port=db_config.port,
+        user=db_config.user,
+        password=db_config.password,
+        db=db_config.database,
+        charset="utf8mb4",
+        autocommit=False,
+    )
+    try:
+        yield conn
+    finally:
+        conn.close()
