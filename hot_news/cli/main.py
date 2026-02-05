@@ -13,6 +13,7 @@ from .commands.analyze import analyze_domain_match
 from .commands.extract import extract_keywords
 from .commands.crawl import trigger_crawl
 from .commands.run import run_pipeline
+from .commands.sync import sync_data, sync_stats
 import typer
 from typing import Optional, List
 import asyncio
@@ -79,6 +80,7 @@ def run_cmd(
     ),
     no_llm: bool = typer.Option(False, "--no-llm", help="跳过LLM分析"),
     no_crawl: bool = typer.Option(False, "--no-crawl", help="跳过爬虫触发"),
+    no_sync: bool = typer.Option(False, "--no-sync", help="跳过数据同步到统一表"),
 ):
     # ✅ 直接调用run_pipeline，不需要asyncio.run()
     # 因为run_pipeline函数内部已经处理了asyncio
@@ -90,7 +92,74 @@ def run_cmd(
         keyword_limit,
         no_llm,
         no_crawl,
+        no_sync,
     )
+
+
+@app.command("sync")
+def sync_cmd(
+    platforms: Optional[List[str]] = typer.Argument(
+        None, help="平台列表 (xhs/dy/wb/bili/ks)，不指定则全部同步"
+    ),
+    no_comments: bool = typer.Option(False, "--no-comments", "-nc", help="不同步评论"),
+    full: bool = typer.Option(False, "--full", "-f", help="全量同步（清空后重建）"),
+    batch_size: int = typer.Option(500, "--batch", "-b", help="批量大小"),
+):
+    """
+    同步各平台数据到统一表
+
+    示例:
+        hot-news sync                    # 增量同步所有平台
+        hot-news sync xhs dy             # 只同步小红书和抖音
+        hot-news sync --full             # 全量重新同步
+        hot-news sync --no-comments      # 只同步内容，不同步评论
+    """
+    sync_data(platforms, no_comments, full, batch_size)
+
+
+@app.command("sync-stats")
+def sync_stats_cmd():
+    """查看统一表同步统计"""
+    sync_stats()
+
+
+@app.command("init-unified")
+def init_unified_db():
+    """初始化统一数据表"""
+    from pathlib import Path
+    from ..config.settings import get_settings
+    import pymysql
+
+    sql_file = (
+        Path(__file__).parent.parent / "database" / "migrations" / "002_unified_tables.sql"
+    )
+
+    if not sql_file.exists():
+        print(f"[Error] SQL文件不存在: {sql_file}")
+        raise typer.Exit(1)
+
+    settings = get_settings()
+    print(f"[Init] 连接数据库: {settings._db_config.host}:{settings._db_config.port}")
+
+    try:
+        conn = pymysql.connect(**settings._db_config.connection_kwargs)
+        with conn.cursor() as cursor:
+            with open(sql_file, "r", encoding="utf-8") as f:
+                sql = f.read()
+                for statement in sql.split(";"):
+                    statement = statement.strip()
+                    if statement:
+                        cursor.execute(statement)
+            conn.commit()
+        conn.close()
+
+        print("[Success] 统一数据表初始化完成！")
+        print("  - unified_content (统一内容表)")
+        print("  - unified_comment (统一评论表)")
+
+    except Exception as e:
+        print(f"[Error] 初始化失败: {e}")
+        raise typer.Exit(1)
 
 
 @app.command()

@@ -19,6 +19,7 @@ from hot_news.database import (
 )
 from hot_news.models.entities import HotNewsItem
 from hot_news.logger import logger, info, debug, warning, error
+from hot_news.sync import UnifiedDataSync
 
 # 并发控制：最多同时执行的LLM调用数
 MAX_CONCURRENT_LLM_CALLS = 5
@@ -150,7 +151,7 @@ async def _extract_keywords(selected_domains, keyword_limit, all_news=None, run_
 
 
 async def _run_pipeline_inner(
-    platforms, domains, crawl_platforms, hot_limit, keyword_limit, no_llm, no_crawl
+    platforms, domains, crawl_platforms, hot_limit, keyword_limit, no_llm, no_crawl, no_sync=False
 ):
     """内部异步执行函数"""
     start_time = time.time()
@@ -165,6 +166,7 @@ async def _run_pipeline_inner(
     matched_count = 0
     keyword_count = 0
     crawl_count = 0
+    sync_count = 0
 
     try:
         # =============== 显示执行配置 ===============
@@ -181,6 +183,7 @@ async def _run_pipeline_inner(
         info(f"  • 关键词限制: {keyword_limit} 个/领域")
         info(f"  • LLM分析: {'✓ 启用' if not no_llm else '✗ 禁用'}")
         info(f"  • 爬虫触发: {'✓ 启用' if not no_crawl else '✗ 禁用'}")
+        info(f"  • 数据同步: {'✓ 启用' if not no_sync else '✗ 禁用'}")
 
         if platforms:
             info(f"  • 热点平台: {', '.join(platforms)}")
@@ -193,7 +196,7 @@ async def _run_pipeline_inner(
         info("")
 
         # =============== Step 1: 获取热点 ===============
-        info("[Step 1/4] 🔍 获取热点新闻")
+        info("[Step 1/5] 🔍 获取热点新闻")
         info("-" * 70)
 
         if platforms:
@@ -228,7 +231,7 @@ async def _run_pipeline_inner(
         info(f"\n✅ 步骤完成: 共获取 {hot_count} 条热点")
 
         # =============== Step 2: 领域分析 ===============
-        info("\n[Step 2/4] 🎯 分析领域匹配")
+        info("\n[Step 2/5] 🎯 分析领域匹配")
         info("-" * 70)
 
         domain_configs = settings.get_domains()
@@ -255,7 +258,7 @@ async def _run_pipeline_inner(
             info("✅ 步骤完成: 跳过")
 
         # =============== Step 3: 提取关键词 ===============
-        info("\n[Step 3/4] 🔑 提取关键词")
+        info("\n[Step 3/5] 🔑 提取关键词")
         info("-" * 70)
 
         if not no_llm:
@@ -275,8 +278,11 @@ async def _run_pipeline_inner(
             info("✅ 步骤完成: 跳过")
 
         # =============== Step 4: 触发爬虫 ===============
-        info("\n[Step 4/4] 🕷️  触发爬虫")
+        info("\n[Step 4/5] 🕷️  触发爬虫")
         info("-" * 70)
+
+        # 记录爬虫开始前的时间戳（用于后续同步）
+        crawl_start_ts = int(time.time() * 1000)
 
         if not no_crawl:
             trigger = CrawlTrigger()
@@ -322,6 +328,61 @@ async def _run_pipeline_inner(
             info("⏭️  跳过爬虫 (--no-crawl 标志)")
             info("✅ 步骤完成: 跳过")
 
+        # =============== Step 5: 数据同步 ===============
+        info("\n[Step 5/5] 🔄 同步到统一表")
+        info("-" * 70)
+
+        if not no_sync:
+            syncer = UnifiedDataSync()
+
+            if not no_crawl and crawl_count > 0:
+                # 有爬虫执行：同步本次爬取的数据（基于爬虫开始时间）
+                info("同步本次爬取的数据到统一表...")
+                crawl_platform_list_for_sync = crawl_platforms or [
+                    p.platform_code for p in settings.get_crawler_platforms()
+                ]
+                try:
+                    sync_stats = await syncer.sync_all_platforms(
+                        platforms=crawl_platform_list_for_sync,
+                        sync_comments=True,
+                        batch_size=500,
+                        incremental=True,
+                        since_ts=crawl_start_ts,
+                    )
+
+                    for key, count in sync_stats.items():
+                        if count > 0:
+                            info(f"  ✓ {key}: {count} 条")
+                        sync_count += count
+
+                    info(f"\n✅ 步骤完成: 同步 {sync_count} 条数据")
+                except Exception as e:
+                    error(f"  ✗ 同步失败: {str(e)[:50]}")
+                    info("✅ 步骤完成: 同步出错")
+            else:
+                # 无爬虫执行：增量同步所有平台的新数据
+                info("增量同步各平台数据...")
+                try:
+                    sync_stats = await syncer.sync_all_platforms(
+                        platforms=None,
+                        sync_comments=True,
+                        batch_size=500,
+                        incremental=True,
+                    )
+
+                    for key, count in sync_stats.items():
+                        if count > 0:
+                            info(f"  ✓ {key}: {count} 条")
+                        sync_count += count
+
+                    info(f"\n✅ 步骤完成: 同步 {sync_count} 条数据")
+                except Exception as e:
+                    error(f"  ✗ 同步失败: {str(e)[:50]}")
+                    info("✅ 步骤完成: 同步出错")
+        else:
+            info("⏭️  跳过同步 (--no-sync 标志)")
+            info("✅ 步骤完成: 跳过")
+
         # =============== 执行总结 ===============
         end_time = time.time()
         elapsed_time = end_time - start_time
@@ -335,6 +396,7 @@ async def _run_pipeline_inner(
         info(f"  • 匹配热点: {matched_count:4} 条")
         info(f"  • 提取关键词: {keyword_count:3} 个")
         info(f"  • 触发爬虫: {crawl_count:3} 次")
+        info(f"  • 数据同步: {sync_count:4} 条")
         info("")
         info(f"⏱️  执行耗时: {elapsed_time:.2f} 秒")
         info(f"🔚 结束时间: {end_datetime}")
@@ -382,13 +444,15 @@ def run_pipeline(
     ),
     no_llm: bool = typer.Option(False, "--no-llm", help="跳过LLM分析，直接提取关键词"),
     no_crawl: bool = typer.Option(False, "--no-crawl", help="跳过爬虫触发"),
+    no_sync: bool = typer.Option(False, "--no-sync", help="跳过数据同步到统一表"),
 ):
     """
-    一键执行完整流程：获取热点 -> 分析匹配 -> 提取关键词 -> 触发爬虫
+    一键执行完整流程：获取热点 -> 分析匹配 -> 提取关键词 -> 触发爬虫 -> 数据同步
 
     示例:
         hot-news run weibo zhihu 科技 金融
         hot-news run --hot-limit 100 --crawl-platforms xhs dy
+        hot-news run --no-sync  # 跳过数据同步
     """
     asyncio.run(
         _run_pipeline_inner(
@@ -399,5 +463,6 @@ def run_pipeline(
             keyword_limit,
             no_llm,
             no_crawl,
+            no_sync,
         )
     )
