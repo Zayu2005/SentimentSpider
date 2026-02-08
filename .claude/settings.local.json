@@ -2,9 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(dir:*)",
-      "Bash(python -c:*)",
-      "Bash(timeout 60 python:*)",
-      "Bash(git add:*)"
+      "Bash(git remote set-url:*)",
+      "Bash(git fetch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nchore: update .gitignore and remove cached files\n\n- Add comprehensive Python .gitignore rules\n- Remove tracked __pycache__ and .pyc files\n- Exclude IDE settings, logs, and virtual environments\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(git ls-tree:*)"
     ]
   }
 }
