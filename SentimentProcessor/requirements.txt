@@ -1,0 +1,18 @@
+# =====================================================
+# SentimentProcessor - Dependencies
+# 依赖包列表
+# =====================================================
+
+# 数据库
+pymysql>=1.0.0
+
+# 配置管理
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# 中文处理
+jieba>=0.42.1
+opencc-python-reimplemented>=0.1.7
+
+# 可选: paddle模式分词（更准确但更慢）
+# paddlepaddle-tiny>=1.6.1
