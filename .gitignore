@@ -1,2 +1,33 @@
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# 模型文件 (太大不提交)
+models/
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# 数据文件
+data/
+*.csv
+*.json
+!SentimentModel/**/*.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 系统文件
+.DS_Store
+Thumbs.db
+nul
+
+# 日志
+logs/
+*.log
