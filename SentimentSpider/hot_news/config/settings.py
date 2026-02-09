@@ -16,13 +16,24 @@ from datetime import datetime
 import os
 from pathlib import Path
 
-# 计算 .env 文件路径（相对于 hot_news/config 目录）
-env_file = Path(__file__).parent.parent.parent / "MediaCrawler" / ".env"
-if env_file.exists():
-    load_dotenv(str(env_file))
-    print(f"[Config] 加载 .env: {env_file}")
-else:
-    load_dotenv()
+# 加载 .env 文件 (优先从项目根目录加载)
+def _find_env_file() -> Path:
+    """查找 .env 文件，优先级: 根目录 > MediaCrawler"""
+    # hot_news/config -> hot_news -> SentimentSpider -> 根目录
+    root_dir = Path(__file__).parent.parent.parent.parent
+    # 优先使用根目录的 .env
+    root_env = root_dir / ".env"
+    if root_env.exists():
+        return root_env
+    # 兼容旧路径
+    legacy_env = Path(__file__).parent.parent.parent / "MediaCrawler" / ".env"
+    if legacy_env.exists():
+        return legacy_env
+    return root_env
+
+env_file = _find_env_file()
+load_dotenv(str(env_file))
+print(f"[Config] 加载 .env: {env_file}")
 
 
 class DBConfig(BaseModel):

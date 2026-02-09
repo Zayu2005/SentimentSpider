@@ -2,6 +2,28 @@
 
 中文社交媒体情感分析系统，支持多平台数据采集、文本预处理和情感分析。
 
+## 快速开始
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/Zayy2005x/SentimentAnalysis.git
+cd SentimentAnalysis
+
+# 2. 创建环境 (推荐使用 Conda)
+conda create -n sentiment python=3.10
+conda activate sentiment
+
+# 3. 安装依赖 (一次性安装所有模块依赖)
+pip install -r requirements.txt
+
+# 4. 配置环境变量
+cp .env.example .env
+# 编辑 .env 文件，设置数据库密码等配置
+
+# 5. 安装 Playwright 浏览器 (爬虫需要)
+playwright install chromium
+```
+
 ## 项目结构
 
 ```
@@ -25,6 +47,17 @@ SentimentAnalysis/
 │   │   └── slang.py          # 网络用语规范化
 │   └── cli/                  # 命令行工具
 │
+├── SentimentModel/           # 情感分析模型
+│   ├── config/               # 配置管理
+│   ├── models/               # BERT 模型
+│   ├── training/             # 模型训练
+│   ├── inference/            # 模型推理
+│   ├── qwen/                 # Qwen2.5 大模型
+│   ├── database/             # 数据库操作
+│   └── cli/                  # 命令行工具
+│
+├── .env.example              # 环境变量模板
+├── requirements.txt          # 统一依赖文件
 └── README.md
 ```
 
@@ -64,50 +97,43 @@ SentimentAnalysis/
   - TF-IDF 算法
   - TextRank 算法
 
+### 情感分析 (SentimentModel)
+
+- **BERT 模型**
+  - 基于 chinese-roberta-wwm-ext
+  - 三分类 (正面/中性/负面)
+
+- **Qwen2.5 大模型**
+  - 支持 18 种情绪标签
+  - 情感分数 (-1.0 ~ 1.0)
+  - 无需微调即可使用
+
 ## 环境要求
 
 - Python 3.10+
 - MySQL 5.7+
-- Conda (推荐)
+- CUDA (GPU 推理，可选)
 
-## 安装
+## 配置说明
 
-### 1. 克隆项目
-
-```bash
-git clone https://github.com/Zayy2005x/SentimentAnalysis.git
-cd SentimentAnalysis
-```
-
-### 2. 创建 Conda 环境
+项目使用根目录的 `.env` 文件进行统一配置。复制 `.env.example` 并修改：
 
 ```bash
-conda create -n sentiment python=3.10
-conda activate sentiment
+cp .env.example .env
 ```
 
-### 3. 安装依赖
-
-```bash
-# 安装爬虫模块依赖
-cd SentimentSpider/MediaCrawler
-pip install -r requirements.txt
-
-# 安装预处理模块依赖
-cd ../../SentimentProcessor
-pip install -r requirements.txt
-```
-
-### 4. 配置数据库
-
-在 `SentimentSpider/MediaCrawler/.env` 中配置 MySQL 连接：
+主要配置项：
 
 ```env
+# MySQL 数据库 (必须)
 MYSQL_DB_HOST=localhost
 MYSQL_DB_PORT=3306
 MYSQL_DB_USER=root
 MYSQL_DB_PWD=your_password
 MYSQL_DB_NAME=sentiment
+
+# HuggingFace 镜像 (国内用户建议配置)
+HF_ENDPOINT=https://hf-mirror.com
 ```
 
 ## 使用方法
@@ -127,8 +153,6 @@ python main.py --platform douyin --keywords "教育"
 ### 数据预处理
 
 ```bash
-cd SentimentAnalysis
-
 # 查看统计信息
 python -m SentimentProcessor stats
 
@@ -146,6 +170,25 @@ python -m SentimentProcessor all --dry-run
 
 # 指定批处理大小
 python -m SentimentProcessor all -b 200
+```
+
+### 情感分析
+
+```bash
+# 使用 Qwen2.5 分析数据库中的数据
+python run_qwen_analyze.py
+
+# 只分析内容
+python run_qwen_analyze.py --type content
+
+# 只分析评论
+python run_qwen_analyze.py --type comment
+
+# 试运行 (不保存)
+python run_qwen_analyze.py --dry-run
+
+# 测试 Qwen2.5 模型
+python test_qwen_base.py
 ```
 
 ### Python API
@@ -204,7 +247,8 @@ words = segmenter.segment(cleaned)
 
 - [x] 数据采集模块 (SentimentSpider)
 - [x] 数据预处理模块 (SentimentProcessor)
-- [ ] 情感分析模型 (SentimentModel)
+- [x] 情感分析模型 (SentimentModel)
+- [ ] 话题聚类与事件监测
 - [ ] API 服务 (SentimentAPI)
 - [ ] 可视化仪表板 (SentimentDashboard)
 

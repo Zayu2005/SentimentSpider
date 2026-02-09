@@ -6,9 +6,32 @@
 """
 
 import os
+from pathlib import Path
 from typing import Optional, Literal
 from pydantic import BaseModel, Field
 from functools import lru_cache
+
+# 加载 .env 文件 (优先从项目根目录加载)
+try:
+    from dotenv import load_dotenv
+
+    def _find_env_file() -> Path:
+        """查找 .env 文件，优先级: 根目录 > MediaCrawler"""
+        root_dir = Path(__file__).parent.parent.parent
+        # 优先使用根目录的 .env
+        root_env = root_dir / ".env"
+        if root_env.exists():
+            return root_env
+        # 兼容旧路径
+        legacy_env = root_dir / "SentimentSpider" / "MediaCrawler" / ".env"
+        if legacy_env.exists():
+            return legacy_env
+        return root_env
+
+    env_file = _find_env_file()
+    load_dotenv(str(env_file))
+except ImportError:
+    pass  # python-dotenv 不是必需的
 
 
 class ModelConfig(BaseModel):

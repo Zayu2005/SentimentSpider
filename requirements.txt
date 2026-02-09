@@ -1,0 +1,77 @@
+# =============================================================================
+# SentimentAnalysis 统一依赖文件
+# =============================================================================
+# 包含所有模块 (Spider, Processor, Model) 的依赖
+# 安装: pip install -r requirements.txt
+# =============================================================================
+
+# ===== 深度学习框架 =====
+torch>=2.0.0
+transformers>=4.30.0
+
+# ===== 数据处理 =====
+pandas>=2.0.0
+numpy>=1.23.0
+scikit-learn>=1.2.0
+datasets>=2.10.0
+
+# ===== 数据库 =====
+pymysql>=1.0.0
+aiomysql>=0.2.0
+asyncmy>=0.2.10
+sqlalchemy>=2.0.0
+aiosqlite>=0.21.0
+redis>=4.6.0
+motor>=3.3.0
+
+# ===== 配置管理 =====
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# ===== 中文处理 =====
+jieba>=0.42.1
+opencc-python-reimplemented>=0.1.7
+
+# ===== 网络请求 =====
+httpx>=0.28.0
+requests>=2.32.0
+playwright>=1.45.0
+tenacity>=8.2.0
+
+# ===== Web 框架 =====
+fastapi>=0.110.0
+uvicorn>=0.29.0
+
+# ===== 工具库 =====
+tqdm>=4.65.0
+aiofiles>=23.2.0
+Pillow>=12.0.0
+opencv-python
+wordcloud>=1.9.0
+matplotlib>=3.9.0
+parsel>=1.9.0
+pyexecjs>=1.5.0
+pyhumps>=3.8.0
+cryptography>=45.0.0
+alembic>=1.16.0
+openpyxl>=3.1.0
+
+# ===== 命令行 =====
+typer>=0.12.0
+
+# ===== 监控 =====
+tensorboard>=2.12.0
+
+# ===== 测试 =====
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# ===== 可选: Qwen 微调 (LoRA) =====
+# peft>=0.5.0
+# bitsandbytes>=0.41.0
+# accelerate>=0.21.0
+# trl>=0.7.0
+
+# ===== 可选: ONNX 导出 =====
+# onnx>=1.14.0
+# onnxruntime>=1.15.0

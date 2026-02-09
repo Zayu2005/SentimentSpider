@@ -15,10 +15,17 @@ import re
 import json
 import argparse
 import logging
+from pathlib import Path
 from typing import List, Dict, Any
 
-# 设置 HuggingFace 镜像
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+# 加载 .env 文件
+from dotenv import load_dotenv
+env_file = Path(__file__).parent / ".env"
+load_dotenv(str(env_file))
+
+# 设置 HuggingFace 镜像 (如果环境变量未设置则使用默认值)
+if not os.getenv("HF_ENDPOINT"):
+    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
