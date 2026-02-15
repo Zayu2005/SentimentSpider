@@ -150,6 +150,54 @@ def cmd_describe(args):
     print(f"  失败:   {stats['error']}")
 
 
+def cmd_wordcloud(args):
+    """生成话题词云数据"""
+    from ..database import TopicEventRepo
+
+    if not args.topic_id and not args.all:
+        print("\n请指定 --topic-id 或 --all")
+        return
+
+    if args.all:
+        # 生成所有非合并话题的词云数据
+        topics = TopicEventRepo.get_non_merged_topics()
+        print(f"\n生成所有话题词云数据...")
+        print(f"话题总数: {len(topics)}")
+
+        success, empty = 0, 0
+        for topic in topics:
+            tid = topic["id"]
+            name = topic.get("event_name", "")
+            data = TopicEventRepo.generate_wordcloud_data(topic_id=tid, limit=args.limit)
+            if data:
+                success += 1
+                print(f"  [OK] #{tid} {name} ({len(data)} 词)")
+            else:
+                empty += 1
+                print(f"  [--] #{tid} {name} (无数据)")
+
+        print(f"\n完成: 成功 {success}, 无数据 {empty}")
+    else:
+        topic_id = args.topic_id
+        print(f"\n生成话题词云数据...")
+        print(f"话题ID: {topic_id}")
+
+        wordcloud_data = TopicEventRepo.generate_wordcloud_data(
+            topic_id=topic_id,
+            limit=args.limit,
+        )
+
+        if not wordcloud_data:
+            print(f"\n话题 {topic_id} 无可用关键词数据")
+            return
+
+        print(f"\n词云数据已生成并写入数据库:")
+        print(f"  关键词数:  {len(wordcloud_data)}")
+        print(f"  前10词:")
+        for item in wordcloud_data[:10]:
+            print(f"    {item['word']:12s}  {item['weight']:.4f}")
+
+
 def cmd_recluster(args):
     """全量重聚类命令"""
     from ..database import TopicEventRepo, TopicContentRepo
@@ -250,6 +298,21 @@ def create_parser() -> argparse.ArgumentParser:
         help="试运行"
     )
 
+    # wordcloud 命令
+    wordcloud_parser = subparsers.add_parser("wordcloud", help="生成话题词云数据")
+    wordcloud_parser.add_argument(
+        "--topic-id", "-t", type=int, default=None,
+        help="话题ID"
+    )
+    wordcloud_parser.add_argument(
+        "--all", action="store_true",
+        help="生成所有话题的词云数据"
+    )
+    wordcloud_parser.add_argument(
+        "--limit", "-l", type=int, default=200,
+        help="每个话题最多聚合的内容条数 (默认: 200)"
+    )
+
     # recluster 命令
     recluster_parser = subparsers.add_parser("recluster", help="全量重聚类")
     recluster_parser.add_argument(
@@ -275,6 +338,7 @@ COMMANDS = {
     "merge": cmd_merge,
     "evolve": cmd_evolve,
     "describe": cmd_describe,
+    "wordcloud": cmd_wordcloud,
     "recluster": cmd_recluster,
 }
 

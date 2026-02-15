@@ -26,6 +26,7 @@ sqlalchemy>=2.0.0
 aiosqlite>=0.21.0
 redis>=4.6.0
 motor>=3.3.0
+neo4j>=5.0.0
 
 # ===== 配置管理 =====
 pydantic>=2.0.0

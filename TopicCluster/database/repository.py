@@ -6,6 +6,7 @@
 """
 
 from typing import List, Dict, Any, Optional
+from collections import Counter
 from datetime import datetime, date
 import json
 import numpy as np
@@ -197,6 +198,79 @@ class TopicEventRepo:
         """
         platform_json = json.dumps(platform_distribution, ensure_ascii=False)
         return execute_update(sql, (heat_level, platform_json, comment_count, topic_id))
+
+    @staticmethod
+    def update_wordcloud(topic_id: int, wordcloud_data: List[Dict]) -> int:
+        """
+        更新话题词云数据
+
+        Args:
+            topic_id: 话题ID
+            wordcloud_data: 词云数据列表, 如 [{"word": "售后", "weight": 15.8}]
+
+        Returns:
+            影响的行数
+        """
+        sql = "UPDATE topic_event SET wordcloud_data = %s WHERE id = %s"
+        data_json = json.dumps(wordcloud_data, ensure_ascii=False)
+        return execute_update(sql, (data_json, topic_id))
+
+    @staticmethod
+    def generate_wordcloud_data(topic_id: int, limit: int = 200) -> List[Dict]:
+        """
+        聚合话题下所有内容的 TF-IDF 关键词，生成词云数据并存入数据库
+
+        Args:
+            topic_id: 话题ID
+            limit: 最多聚合的内容条数
+
+        Returns:
+            词云数据列表 [{"word": "...", "weight": ...}]
+        """
+        # 1. 获取话题下的内容关键词
+        contents = TopicContentRepo.get_content_for_topic(topic_id, limit=limit)
+        if not contents:
+            return []
+
+        # 2. 汇总所有内容的关键词权重
+        word_freq = Counter()
+        for item in contents:
+            kw_raw = item.get("keywords")
+            if not kw_raw:
+                continue
+            keywords = json.loads(kw_raw) if isinstance(kw_raw, str) else kw_raw
+            for kw in keywords:
+                if isinstance(kw, dict) and "word" in kw:
+                    word_freq[kw["word"]] += kw.get("weight", 1.0)
+                elif isinstance(kw, (list, tuple)) and len(kw) >= 2:
+                    word_freq[kw[0]] += kw[1]
+                elif isinstance(kw, str) and kw.strip():
+                    word_freq[kw.strip()] += 1.0
+
+        # 3. 合并话题核心关键词（权重放大 5 倍）
+        sql = "SELECT keywords FROM topic_event WHERE id = %s"
+        row = execute_query(sql, (topic_id,), fetch_one=True)
+        if row and row.get("keywords"):
+            topic_kw = row["keywords"]
+            if isinstance(topic_kw, str):
+                topic_kw = json.loads(topic_kw)
+            for kw in topic_kw:
+                if isinstance(kw, dict) and "word" in kw:
+                    word_freq[kw["word"]] += kw.get("weight", 1.0) * 5
+
+        if not word_freq:
+            return []
+
+        # 4. 取 top 100，构建结果
+        wordcloud_data = [
+            {"word": word, "weight": round(weight, 4)}
+            for word, weight in word_freq.most_common(100)
+        ]
+
+        # 5. 写入数据库
+        TopicEventRepo.update_wordcloud(topic_id, wordcloud_data)
+
+        return wordcloud_data
 
     @staticmethod
     def count_by_status() -> List[Dict[str, Any]]:
